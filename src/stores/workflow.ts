@@ -1,34 +1,34 @@
-import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
 
 export interface WorkflowEvent {
-  timestamp: string;
-  message: string;
-  type: 'info' | 'success' | 'error';
-  docId: string;
+  timestamp: string
+  message: string
+  type: 'info' | 'success' | 'error'
+  docId: string
 }
 
 export const useWorkflowStore = defineStore('workflow', () => {
-  const logs = ref<WorkflowEvent[]>([]);
-  const isProcessing = ref(false);
+  const logs = ref<WorkflowEvent[]>([])
+  const isProcessing = ref(false)
 
   const addLog = (message: string, docId: string, type: WorkflowEvent['type'] = 'info') => {
     logs.value.unshift({
       timestamp: new Date().toLocaleTimeString(),
       message,
       type,
-      docId
-    });
-  };
+      docId,
+    })
+  }
 
   const clearLogs = () => {
-    logs.value = [];
-  };
+    logs.value = []
+  }
 
   return {
     logs,
     isProcessing,
     addLog,
-    clearLogs
-  };
-});
+    clearLogs,
+  }
+})
