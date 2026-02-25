@@ -1,44 +1,59 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import { useWorkflowStore } from '@/stores/workflow'
+import { storeToRefs } from 'pinia'
+
+const store = useWorkflowStore()
+const { kanbanData } = storeToRefs(store)
+const { setKanbanData } = store
 
 const documentId = ref<string>('')
-const isProcessing = ref<boolean>(false)
+const isProcessingLocal = ref<boolean>(false)
 const API_BASE = 'http://localhost:3000/workflow'
-
-// สถานะของ Kanban Board
-const kanbanData = ref({ waiting: [], processing: [], completed: [] })
 
 // ตัวแปรเก็บ Connection ของ SSE
 let eventSource: EventSource | null = null
 
-onMounted(() => {
-  // 1. เปิดการเชื่อมต่อ Server-Sent Events ทันทีที่โหลดหน้าเว็บ
+const fetchKanbanStatus = async () => {
+  try {
+    const response = await axios.get(`${API_BASE}/status`)
+    setKanbanData(response.data)
+  } catch (error) {
+    console.error('Failed to fetch initial status:', error)
+    // Mock Mode: ถ้าเชื่อมต่อ Backend ไม่ได้ ให้ใส่ข้อมูลจำลองไว้ก่อน
+    if (kanbanData.value.waiting.length === 0 && kanbanData.value.processing.length === 0) {
+      console.warn('Backend unavailable, using mock data mode')
+    }
+  }
+}
+
+onMounted(async () => {
+  // 1. ดึงข้อมูลเริ่มต้นทันทีที่โหลดหน้า
+  await fetchKanbanStatus()
+
+  // 2. เปิดการเชื่อมต่อ Server-Sent Events สำหรับ Real-time updates
   eventSource = new EventSource(`${API_BASE}/status-stream`)
 
-  // 2. ดักฟังข้อความที่ Server ผลัก (Push) มาให้
   eventSource.onmessage = (event) => {
-    // อัปเดตข้อมูลลง Kanban Board แบบ Real-time
-    kanbanData.value = JSON.parse(event.data)
+    // อัปเดตข้อมูลลง Store
+    setKanbanData(JSON.parse(event.data))
   }
 
-  // ดักจับ Error เผื่อ Server ดับ
   eventSource.onerror = (error) => {
     console.error('SSE Connection Error:', error)
   }
 })
 
 onUnmounted(() => {
-  // ปิดการเชื่อมต่อเมื่อผู้ใช้ออกจากหน้านี้ (ป้องกัน Memory Leak)
   if (eventSource) {
     eventSource.close()
   }
 })
 
-// เปลี่ยนมาใช้ Axios สำหรับส่งข้อมูล
 const handleAction = async (endpoint: 'submit' | 'approve') => {
   if (!documentId.value) return
-  isProcessing.value = true
+  isProcessingLocal.value = true
 
   const payload =
     endpoint === 'submit'
@@ -47,13 +62,12 @@ const handleAction = async (endpoint: 'submit' | 'approve') => {
 
   try {
     await axios.post(`${API_BASE}/${endpoint}`, payload)
-    documentId.value = '' // ล้างช่องกรอกเมื่อส่งสำเร็จ
-
-    // ไม่ต้องสั่ง fetchKanbanStatus() แล้ว เพราะ SSE จะดันข้อมูลใหม่มาให้เองทันทีในรอบวินาทีถัดไป
+    documentId.value = ''
+    // หลังส่ง Action สำเร็จ เราไม่จำเป็นต้อง fetch ใหม่ เพราะ SSE จะส่งข้อมูลใหม่มาให้เอง
   } catch (error) {
     console.error('Action failed:', error)
   } finally {
-    isProcessing.value = false
+    isProcessingLocal.value = false
   }
 }
 </script>
